@@ -3,7 +3,7 @@
 ##  CS691-Spring2025-Team8-Capstone Project
 
 ## **Project Description**  
-This project implements a **personalized recommendation system** for e-commerce platforms using **High-Utility Sequential Mining (HUIM)**. It considers multiple factors such as customer preferences, purchase history, item popularity, and price sensitivity to generate personalized product recommendations.
+This project implements a **personalized recommendation system** for e-commerce platforms using **High-Utility Sequential Pattern Mining (HUSPM)**. It considers multiple factors such as customer preferences, purchase history, item popularity, and price sensitivity to generate personalized product recommendations.
 
 ## **Features**  
 -  Personalized product recommendations  
