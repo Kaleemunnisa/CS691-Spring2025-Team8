@@ -21,12 +21,15 @@
       "type": "integer"
     },
     "SellingPrice": {
-      "type": "decimal"
+      "type": "integer"
     },
     "itemQuantityType": {
       "type": "string"
     },
-    "images": {
+    "slug": {
+      "type": "uid"
+    },
+    "image": {
       "type": "media",
       "multiple": true,
       "required": false,
@@ -37,15 +40,17 @@
         "audios"
       ]
     },
-    "slug": {
-      "type": "uid",
-      "targetField": "name"
-    },
     "categories": {
       "type": "relation",
       "relation": "manyToMany",
       "target": "api::category.category",
       "inversedBy": "products"
+    },
+    "user_carts": {
+      "type": "relation",
+      "relation": "manyToMany",
+      "target": "api::user-cart.user-cart",
+      "mappedBy": "products"
     }
   }
 }
