@@ -1,48 +1,84 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cart - PaceCart</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Cart - PaceCart</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Segoe+UI:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+  <style>
+    body {
+      background: linear-gradient(to right, #ffffff, #f3e8ff);
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .brand-font {
+      font-family: 'Great Vibes', cursive;
+    }
+  </style>
 </head>
-<body>
-    <div class="container">
-        <nav class="navbar navbar-expand-lg navbar-light bg-light">
-            <a class="navbar-brand" href="#">PaceCart</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item"><a class="nav-link" href="{{ url_for('checkout') }}">Checkout</a></li>
-                    <li class="nav-item"><a class="nav-link" href="{{ url_for('login') }}">Logout</a></li>
-                </ul>
-            </div>
-        </nav>
+<body class="text-gray-800">
 
-        <h1 class="mt-5">Your Cart</h1>
-        <div class="row">
-            {% for item in cart_items %}
-                <div class="col-md-4">
-                    <div class="card mb-4">
-                        <img src="{{ item['image_url'] }}" class="card-img-top" alt="{{ item['product_name'] }}">
-                        <div class="card-body">
-                            <h5 class="card-title">{{ item['product_name'] }}</h5>
-                            <p class="card-text">{{ item['description'] }}</p>
-                            <p class="card-text"><strong>${{ item['price'] }}</strong></p>
-                            <form action="{{ url_for('remove_from_cart') }}" method="POST">
-                                <input type="hidden" name="product_id" value="{{ item['product_id'] }}">
-                                <button type="submit" class="btn btn-danger">Remove</button>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            {% endfor %}
+<!-- Header -->
+<nav class="bg-white border-b border-purple-200 py-3 sticky top-0 z-10 shadow-md px-6 flex justify-between items-center">
+  <div class="flex items-center space-x-4">
+    <img src="https://static.vecteezy.com/system/resources/thumbnails/000/251/695/small_2x/grocery-shopping-bag-vector-illustration.jpg"
+         alt="PaceCart Logo" class="h-10 w-10 rounded-full border border-white shadow">
+    <h1 class="text-3xl font-bold text-purple-700 brand-font">PaceCart</h1>
+  </div>
+  <div class="space-x-4 text-purple-800 font-semibold">
+    <a href="/home" class="hover:text-purple-600">Home</a>
+    <a href="/order-history" class="hover:text-purple-600">Orders</a>
+    <a href="/logout" class="hover:text-purple-600">Logout</a>
+  </div>
+</nav>
+
+<!-- Cart Content -->
+<div class="max-w-5xl mx-auto px-6 py-12">
+  <h2 class="text-3xl font-bold text-purple-700 mb-8 text-center">🛒 Your Shopping Cart</h2>
+
+  {% if cart_items %}
+    <form method="POST" action="/cart">
+      <div class="space-y-6">
+        {% for item in cart_items %}
+        <div class="bg-white rounded-xl shadow-md p-6 border border-purple-100 flex flex-col md:flex-row justify-between items-center">
+          <div class="flex items-center gap-4 w-full md:w-2/3">
+            <img src="{{ item.image_url }}" alt="{{ item.product_name }}" class="h-20 w-20 object-cover rounded-xl border">
+            <div>
+              <h3 class="text-lg font-semibold text-purple-700">{{ item.product_name }}</h3>
+              <p class="text-sm text-gray-500">Price: ${{ '%.2f' % item.price }}</p>
+              <div class="mt-2">
+                <label for="qty{{ item.product_id }}" class="text-sm">Quantity:</label>
+                <input type="number" name="quantity" min="1" value="{{ item.quantity }}" class="w-16 border rounded px-2 py-1 text-sm">
+                <input type="hidden" name="update_id" value="{{ item.product_id }}">
+                <button type="submit" class="ml-2 px-3 py-1 text-white bg-purple-500 rounded hover:bg-purple-600 text-sm">Update</button>
+              </div>
+            </div>
+          </div>
+          <div class="text-right mt-4 md:mt-0 w-full md:w-1/3">
+            <p class="text-purple-700 font-bold text-lg">Total: ${{ '%.2f' % (item.price * item.quantity) }}</p>
+            <button type="submit" name="remove_id" value="{{ item.product_id }}"
+                    class="mt-2 px-4 py-2 bg-red-500 text-white text-sm rounded hover:bg-red-600">Remove</button>
+          </div>
         </div>
-        <a href="{{ url_for('checkout') }}" class="btn btn-success">Proceed to Checkout</a>
-    </div>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+        {% endfor %}
+      </div>
+    </form>
+
+    <!-- Total and Checkout -->
+    <form method="POST" action="/cart" class="text-center mt-10">
+      <p class="text-xl font-semibold text-gray-700 mb-4">Total:
+        <span class="text-purple-600 font-bold">${{ '%.2f' % total_price }}</span></p>
+        <form method="POST" action="/cart" class="text-center mt-10">
+          <button type="submit" name="checkout" value="true"
+                  class="bg-green-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-green-700 transition">
+            <i class="fas fa-credit-card mr-2"></i>Proceed to Payment
+          </button>
+    </form>
+  {% else %}
+    <p class="text-center text-gray-500 text-lg">Your cart is empty. Start adding items!</p>
+  {% endif %}
+</div>
+
 </body>
 </html>
-

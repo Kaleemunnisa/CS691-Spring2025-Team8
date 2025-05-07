@@ -39,23 +39,32 @@ NUM_PRODUCTS = 5000  # Adjust based on your dataset
 # Predict utility scores using deep learning
 def predict_utility_scores(user_id, product_ids, products_df):
     global UTILITY_MODEL
-    
+
+    # Build product ID to index map
+    unique_ids = sorted(products_df['product_id'].unique())
+    id_to_index = {pid: idx for idx, pid in enumerate(unique_ids)}
+
+    # Map the incoming product_ids to valid indices
+    mapped_ids = [id_to_index[pid] for pid in product_ids if pid in id_to_index]
+
     if UTILITY_MODEL is None:
         logger.debug("Initializing utility model...")
-        UTILITY_MODEL = build_utility_model(NUM_USERS, NUM_PRODUCTS)
-        # Simulate training (replace with actual training data)
-        dummy_user_ids = np.array([user_id] * len(product_ids))
-        dummy_product_ids = np.array(product_ids)
-        dummy_scores = np.random.uniform(0, 1, len(product_ids))
+        num_products = len(unique_ids)
+        UTILITY_MODEL = build_utility_model(NUM_USERS, num_products)
+
+        # Dummy training (replace with real training logic)
+        dummy_user_ids = np.array([user_id] * len(mapped_ids))
+        dummy_product_ids = np.array(mapped_ids)
+        dummy_scores = np.random.uniform(0, 1, len(mapped_ids))
         UTILITY_MODEL.fit([dummy_user_ids, dummy_product_ids], dummy_scores, epochs=1, verbose=0)
-    
-    user_ids = np.array([user_id] * len(product_ids))
-    product_ids = np.array(product_ids)
-    
+
     try:
+        user_ids = np.array([user_id] * len(mapped_ids))
+        product_ids = np.array(mapped_ids)
+
         scores = UTILITY_MODEL.predict([user_ids, product_ids], verbose=0).flatten()
         logger.debug(f"Deep learning scores for user {user_id}: {scores.tolist()}")
         return scores
     except Exception as e:
         logger.error(f"Deep learning prediction failed: {e}")
-        return np.ones(len(product_ids)) * 0.5  # Fallback
+        return np.ones(len(mapped_ids)) * 0.5  # fallback score

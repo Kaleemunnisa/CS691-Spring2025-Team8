@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Orders - PaceCart</title>
+  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Segoe+UI:wght@400;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/alpinejs" defer></script>
+  <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+  <style>
+    body {
+      background: linear-gradient(to right, #ffffff, #f3e8ff);
+      font-family: 'Segoe UI', sans-serif;
+    }
+    .brand-font {
+      font-family: 'Great Vibes', cursive;
+    }
+    .transition-slide {
+      transition: max-height 0.5s ease-out;
+      overflow: hidden;
+    }
+  </style>
+</head>
+<body class="text-gray-800">
+
+<!-- Header -->
+<nav class="bg-white border-b border-purple-200 shadow p-4 sticky top-0 z-50 flex justify-between items-center px-6">
+  <div class="flex items-center space-x-4">
+    <img src="https://static.vecteezy.com/system/resources/thumbnails/000/251/695/small_2x/grocery-shopping-bag-vector-illustration.jpg" alt="PaceCart Logo" class="h-10 w-10 rounded-full border border-white shadow">
+    <span class="text-3xl font-bold text-black brand-font">PaceCart</span>
+  </div>
+  <div class="space-x-4 text-purple-800 font-semibold">
+    <a href="/home" class="hover:text-purple-600">Home</a>
+    <a href="/cart" class="hover:text-purple-600">Cart</a>
+    <a href="/logout" class="hover:text-purple-600">Logout</a>
+  </div>
+</nav>
+
+<!-- Flash Messages -->
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="max-w-2xl mx-auto mt-4">
+      {% for category, message in messages %}
+      <div class="mb-4 text-sm px-4 py-3 rounded border-l-4 shadow-md flex justify-between items-center
+                  {% if category == 'success' %}bg-green-100 text-green-800 border-green-500
+                  {% elif category == 'error' %}bg-red-100 text-red-700 border-red-500
+                  {% else %}bg-blue-100 text-blue-700 border-blue-500{% endif %}">
+        <span>{{ message }}</span>
+        <button onclick="this.parentElement.style.display='none'" class="text-xl font-bold ml-4">&times;</button>
+      </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<!-- Orders Section -->
+<div class="max-w-6xl mx-auto px-6 py-12" x-data="{ active: null }">
+  <h2 class="text-3xl font-bold text-purple-700 mb-8 text-center">📦 Your Order History</h2>
+
+  {% if orders_by_date %}
+    {% for date, items in orders_by_date.items() %}
+    <div class="mb-6 border rounded-xl">
+      <button @click="active === '{{ date }}' ? active = null : active = '{{ date }}'" class="w-full text-left bg-purple-100 px-4 py-3 rounded-t font-semibold text-purple-800 shadow">
+        🗓️ {{ date }} — {{ items|length }} item(s)
+      </button>
+      <div x-show="active === '{{ date }}'" x-transition class="transition-slide grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-3 px-4 pb-4">
+        {% for item in items %}
+        <div class="bg-white p-4 rounded-xl shadow border">
+          <img src="{{ item.image_url }}" class="h-32 w-full object-cover rounded mb-2">
+          <h3 class="text-lg font-semibold text-purple-700">{{ item.product_name }}</h3>
+          <p class="text-sm text-gray-500">Qty: {{ item.quantity }}</p>
+          <p class="text-sm text-gray-700">Paid: ${{ '%.2f' % item.total_price }}</p>
+          <form action="/rate_product" method="POST" class="mt-3 flex items-center gap-2">
+            <input type="hidden" name="user_id" value="{{ session['user_id'] }}">
+            <input type="hidden" name="product_id" value="{{ item.product_id }}">
+            <select name="rating" class="p-1 border rounded text-sm">
+              <option value="5">★★★★★</option>
+              <option value="4">★★★★</option>
+              <option value="3">★★★</option>
+              <option value="2">★★</option>
+              <option value="1">★</option>
+            </select>
+            <button type="submit" class="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700">Rate</button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="text-center text-gray-500 text-lg">You haven't made any purchases yet.</p>
+  {% endif %}
+</div>
+
+</body>
+</html>
