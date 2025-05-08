@@ -139,6 +139,7 @@ pacecart/
 | `/recommendations/<user_id>`      | Personalized recommendations from DB                |
 | `/category/<category_name>`       | Filter products by category                         |
 | `/product_details/<product_id>`   | Detailed view of a single product (optional page) 
+|  `/proile                         | Edit User Information                  |
 ---
 
 ## 🎯 Expected Outcomes
