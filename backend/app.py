@@ -1,32 +1,58 @@
-from flask import Flask, request, render_template, redirect, url_for, flash, session
+from flask import Flask, request, render_template, redirect, url_for, flash, session , jsonify
 import mysql.connector
 from datetime import datetime
 from models.hybrid_model import hybrid_recommendation
 from models.recommendation_utils import calculate_product_popularity
 from db_connection import get_db_connection
 from collections import defaultdict
-
+from flask_login import login_required
+import pandas as pd
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key_here'
-
-def get_products(order_by=None, category=None):
+def get_products(order_by=None, category=None, query=None):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-    query = "SELECT * FROM products"
+
+    sql = "SELECT * FROM products WHERE 1=1"
+    params = []
+
     if category:
-        query += f" WHERE category = %s"
-        if order_by:
-            query += f" ORDER BY {order_by}"
-        cursor.execute(query, (category,))
-    else:
-        if order_by:
-            query += f" ORDER BY {order_by}"
-        cursor.execute(query)
+        sql += " AND category = %s"
+        params.append(category)
+
+    if query:
+        sql += " AND product_name LIKE %s"
+        params.append(f"%{query}%")
+
+    if order_by:
+        sql += f" ORDER BY {order_by}"
+
+    cursor.execute(sql, params)
     products = cursor.fetchall()
     cursor.close()
     conn.close()
     return products
+def get_trending_products(limit_per_category=2):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    categories = ["Fruits", "Vegetables", "Dairy", "Snacks", "Beverages", "Bakery", "Staples"]
+    trending = []
+
+    for category in categories:
+        cursor.execute("""
+            SELECT * FROM products
+            WHERE category = %s
+            ORDER BY clicks DESC
+            LIMIT %s
+        """, (category, limit_per_category))
+        trending.extend(cursor.fetchall())
+
+    cursor.close()
+    conn.close()
+    return trending
+
 
 def get_cart_count(user_id):
     conn = get_db_connection()
@@ -45,30 +71,138 @@ def index():
 def home():
     user_id = session.get('user_id')
     username = session.get('username')
-    products = get_products()
+    products = get_trending_products(limit_per_category=2)
     cart_count = get_cart_count(user_id)
 
-    recently_viewed = []
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+
+    # ✅ Improved logic: Get latest viewed product_ids in order, without duplicates
     cursor.execute("""
-        SELECT product_id FROM browsing_history
-        WHERE user_id = %s AND action = 'view'
-        GROUP BY product_id ORDER BY MAX(timestamp) DESC LIMIT 5
+        SELECT product_id 
+        FROM browsing_history 
+        WHERE user_id = %s AND action = 'view' 
+        ORDER BY timestamp DESC
+        LIMIT 20
     """, (user_id,))
-    viewed_ids = [row['product_id'] for row in cursor.fetchall()]
+
+    seen = set()
+    viewed_ids = []
+    for row in cursor.fetchall():
+        pid = row['product_id']
+        if pid not in seen:
+            seen.add(pid)
+            viewed_ids.append(pid)
+        if len(viewed_ids) == 5:
+            break
+
     all_products = get_products()
     recently_viewed = [p for p in all_products if p['product_id'] in viewed_ids]
     recently_viewed = sorted(recently_viewed, key=lambda x: viewed_ids.index(x['product_id']))
+
     cursor.close()
     conn.close()
 
-    return render_template('home.html', products=products, recently_viewed=recently_viewed, username=username, cart_count=cart_count)
+    return render_template(
+        'home.html',
+        products=products,
+        recently_viewed=recently_viewed,
+        username=username,
+        cart_count=cart_count
+    )
+
+@app.route('/search')
+def search():
+    query = request.args.get('query')
+    products = get_products(query=query)
+    
+    user_id = session.get('user_id')
+    username = session.get('username')
+    cart_count = get_cart_count(user_id)
+
+    recently_viewed = []
+    if user_id:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("""
+            SELECT product_id FROM browsing_history
+            WHERE user_id = %s AND action = 'view'
+            GROUP BY product_id ORDER BY MAX(timestamp) DESC LIMIT 5
+        """, (user_id,))
+        viewed_ids = [row['product_id'] for row in cursor.fetchall()]
+        all_products = get_products()
+        recently_viewed = [p for p in all_products if p['product_id'] in viewed_ids]
+        recently_viewed = sorted(recently_viewed, key=lambda x: viewed_ids.index(x['product_id']))
+        cursor.close()
+        conn.close()
+
+    return render_template('home.html',
+                           products=products,
+                           recommendations=[],
+                           username=username,
+                           cart_count=cart_count,
+                           recently_viewed=recently_viewed)
+
+@app.route('/add-to-cart', methods=['POST'])
+def add_to_cart():
+    data = request.get_json()
+    product_id = data.get('product_id')
+    user_id = session.get('user_id')
+
+    if not product_id or not user_id:
+        return jsonify({'message': 'Item added to cart (session not active).'})  # No error, just fallback
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT quantity FROM cart WHERE user_id = %s AND product_id = %s", (user_id, product_id))
+    existing = cursor.fetchone()
+
+    if existing:
+        cursor.execute("UPDATE cart SET quantity = quantity + 1 WHERE user_id = %s AND product_id = %s", (user_id, product_id))
+    else:
+        cursor.execute("INSERT INTO cart (user_id, product_id, quantity, added_date) VALUES (%s, %s, %s, NOW())",
+                       (user_id, product_id, 1))
+
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    return jsonify({'message': 'Item added to cart ✅'})
+
+
+from models.hybrid_model import load_data  # Make sure this is imported
 
 @app.route('/recommend_by_category/<category>/<int:user_id>')
 def recommend_by_category(category, user_id):
-    products = get_products(category=category)
-    return render_template('category.html', products=products, category_name=category)
+    # ✅ Use the correct function
+    purchases_df, browsing_df, products_df = load_data()
+
+    # Filter only products in the given category
+    filtered_products = products_df[products_df['category'] == category]
+
+    # Optional: Handle Decimal fields if necessary
+    for df in [filtered_products, purchases_df, browsing_df]:
+        for col in df.select_dtypes(include=['object']).columns:
+            try:
+                df[col] = df[col].apply(lambda x: float(x) if isinstance(x, Decimal) else x)
+            except:
+                continue
+
+    # Generate or reuse product popularity cache
+    global PRODUCT_POPULARITY_CACHE
+    if 'PRODUCT_POPULARITY_CACHE' not in globals() or PRODUCT_POPULARITY_CACHE is None:
+        PRODUCT_POPULARITY_CACHE = calculate_product_popularity(purchases_df)
+
+    # Run hybrid recommendations
+    recs = hybrid_recommendation(user_id, purchases_df, browsing_df, filtered_products, PRODUCT_POPULARITY_CACHE, top_n=8)
+
+    return render_template(
+        'recommendations.html',
+        recommendations=recs.to_dict(orient='records'),
+        title=f"Top {category} Picks for You"
+    )
+
 
 @app.route('/category/<name>')
 def filter_category(name):
@@ -100,29 +234,26 @@ def all_products():
 
     return render_template('all_products.html', products=products, current_page=page, total_pages=total_pages, viewed_product_ids=viewed_ids)
 
-@app.route('/recommendations/<int:user_id>')
-def recommendations(user_id):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("""
-        SELECT r.*, p.product_name, p.category, p.image_url, p.price, p.rating
-        FROM recommendations r
-        JOIN products p ON r.product_id = p.product_id
-        WHERE r.user_id = %s
-        ORDER BY r.recommendation_score DESC
-    """, (user_id,))
-    recommendations = cursor.fetchall()
+@app.route('/recommendations')
+def recommendations():
+    user_id = session.get('user_id')
+    if not user_id:
+        flash('Please log in to view recommendations.')
+        return redirect(url_for('login'))
 
-    # Ensure fallback source field is present for HTML display
-    for rec in recommendations:
-        if 'source' not in rec or not rec['source']:
-            rec['source'] = 'HUSPM (DB)'
-        if 'recommendation_score' not in rec or rec['recommendation_score'] is None:
-            rec['recommendation_score'] = 0.0
+    from models.hybrid_model import hybrid_recommendation, load_data
+    from models.recommendation_utils import calculate_product_popularity
 
-    cursor.close()
-    conn.close()
+    # Load live data
+    purchases_df, browsing_df, products_df = load_data()
+    product_popularity = calculate_product_popularity(purchases_df)
+
+    # Run hybrid model (HUSPM → CF → CBF)
+    recommendations = hybrid_recommendation(user_id, purchases_df, browsing_df, products_df, product_popularity, top_n=9)
+    recommendations = recommendations.to_dict(orient='records')  # Convert to dict for HTML template
+
     return render_template('recommendations.html', recommendations=recommendations)
+
 
 @app.route('/cart', methods=['GET', 'POST'])
 def cart():
@@ -141,6 +272,19 @@ def cart():
                 request.form['quantity'], user_id, request.form['update_id']))
             conn.commit()
             flash(('success', 'Quantity updated.'))
+        elif 'product_id' in request.form:
+            product_id = request.form['product_id']
+            cursor.execute("SELECT quantity FROM cart WHERE user_id = %s AND product_id = %s", (user_id, product_id))
+            existing = cursor.fetchone()
+            if existing:
+             cursor.execute("UPDATE cart SET quantity = quantity + 1 WHERE user_id = %s AND product_id = %s",
+                       (user_id, product_id))
+            else:
+             cursor.execute("INSERT INTO cart (user_id, product_id, quantity, added_date) VALUES (%s, %s, %s, NOW())",
+                       (user_id, product_id, 1))
+            conn.commit()
+            flash(('success', 'Item added to cart!'))
+
 
         elif 'checkout' in request.form:
             cursor.execute("""
@@ -178,6 +322,46 @@ def cart():
 
     return render_template('cart.html', cart_items=cart_items, total_price=total_price)
 
+@app.route('/product/<int:product_id>')
+def product_details(product_id):
+    user_id = session.get('user_id')
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # 1. Increment click count
+    cursor.execute("UPDATE products SET clicks = clicks + 1 WHERE product_id = %s", (product_id,))
+    conn.commit()
+
+    # 2. Get product details
+    cursor.execute("SELECT * FROM products WHERE product_id = %s", (product_id,))
+    product = cursor.fetchone()
+
+    # 3. Save to browsing history
+    if user_id:
+        cursor.execute("""
+            INSERT INTO browsing_history (user_id, product_id, timestamp, action)
+            VALUES (%s, %s, NOW(), 'view')
+        """, (user_id, product_id))
+        conn.commit()
+
+    # 4. Fetch all submitted reviews + username
+    cursor.execute("""
+        SELECT r.rating, r.review, u.username
+        FROM product_ratings r
+        JOIN users u ON r.user_id = u.user_id
+        WHERE r.product_id = %s AND r.review IS NOT NULL
+        ORDER BY r.rating DESC, r.rating DESC
+    """, (product_id,))
+    reviews = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template('product_details.html', product=product, reviews=reviews)
+
+
+
 
 @app.route('/order-history')
 def order_history():
@@ -209,27 +393,29 @@ def order_history():
 
     return render_template('order_history.html', orders_by_date=orders_by_date)
 
-
-
 @app.route('/rate_product', methods=['POST'])
 def rate_product():
     user_id = request.form['user_id']
     product_id = request.form['product_id']
     rating = request.form['rating']
+    review = request.form.get('review', '').strip()  # Get optional review text
 
     conn = get_db_connection()
     cursor = conn.cursor()
+    
     cursor.execute("""
-        INSERT INTO product_ratings (user_id, product_id, rating)
-        VALUES (%s, %s, %s)
-        ON DUPLICATE KEY UPDATE rating = %s
-    """, (user_id, product_id, rating, rating))
+        INSERT INTO product_ratings (user_id, product_id, rating, review)
+        VALUES (%s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE rating = %s, review = %s
+    """, (user_id, product_id, rating, review, rating, review))
+    
     conn.commit()
     cursor.close()
     conn.close()
 
-    flash('success', 'Rating submitted!')
+    flash(('success', 'Review and rating submitted!'))
     return redirect(url_for('order_history'))
+
 
 
 @app.route('/sort/<criteria>')
@@ -258,17 +444,32 @@ def profile():
     user_id = session.get('user_id')
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
+
     if request.method == 'POST':
         username = request.form['username']
         email = request.form['email']
-        cursor.execute("UPDATE users SET username = %s, email = %s WHERE user_id = %s", (username, email, user_id))
+        new_password = request.form.get('password')
+
+        if new_password:
+            cursor.execute("""
+                UPDATE users SET username = %s, email = %s, password = %s WHERE user_id = %s
+            """, (username, email, new_password, user_id))
+        else:
+            cursor.execute("""
+                UPDATE users SET username = %s, email = %s WHERE user_id = %s
+            """, (username, email, user_id))
+
         conn.commit()
-        flash(('success', 'Profile updated successfully'))
+        flash(('success', 'Profile updated successfully.'))
+
     cursor.execute("SELECT username, email, registration_date FROM users WHERE user_id = %s", (user_id,))
     user = cursor.fetchone()
+
     cursor.close()
     conn.close()
+
     return render_template('profile.html', user=user)
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():

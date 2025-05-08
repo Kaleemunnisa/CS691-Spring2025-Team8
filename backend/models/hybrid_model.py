@@ -30,27 +30,25 @@ def load_data():
     finally:
         connection.close()
 
-# Fair distribution function for recommendations
+# Fair distribution and deduplication
+
 def fair_hybrid_distribution(huspm_recs, collab_recs, content_recs, top_n=9):
     huspm_recs = pd.DataFrame(huspm_recs)
     collab_recs = pd.DataFrame(collab_recs)
     content_recs = pd.DataFrame(content_recs)
 
-    base_share = top_n // 3
-    remainder = top_n % 3
-    huspm_share = base_share + (1 if remainder > 0 else 0)
-    collab_share = base_share + (1 if remainder > 1 else 0)
-    content_share = base_share
+    combined = pd.concat([huspm_recs, collab_recs, content_recs], ignore_index=True)
 
-    top_huspm = huspm_recs.sort_values(by='score', ascending=False).head(huspm_share)
-    top_collab = collab_recs.sort_values(by='score', ascending=False).head(collab_share)
-    top_content = content_recs.sort_values(by='score', ascending=False).head(content_share)
+    # Remove duplicate product_ids, keep highest score
+    combined.sort_values(by='score', ascending=False, inplace=True)
+    combined.drop_duplicates(subset='product_id', keep='first', inplace=True)
 
-    final_recommendations = pd.concat([top_huspm, top_collab, top_content], ignore_index=True)
-    final_recommendations = final_recommendations.sort_values(by='score', ascending=False).reset_index(drop=True)
+    # Limit to top N
+    final_recommendations = combined.head(top_n).reset_index(drop=True)
     return final_recommendations
 
-# Hybrid Recommendation: Combine results from HUSPM, Collaborative Filtering, and Content-Based Filtering
+# Hybrid Recommendation
+
 def hybrid_recommendation(user_id, purchases, browsing_history, products, product_popularity, top_n=9):
     logger.debug(f"Hybrid Recommendation for user_id: {user_id}")
 
@@ -64,7 +62,12 @@ def hybrid_recommendation(user_id, purchases, browsing_history, products, produc
         huspm_recs['score'] = huspm_recs['score'] * 1.3
 
     collab_recs = collaborative_filtering(user_id, purchases, products)
-    content_recs = content_based_filtering(user_id, purchases, browsing_history, products)
+    collab_recs = pd.DataFrame(collab_recs)
+
+    content_recs = pd.DataFrame()
+    if huspm_recs.empty and collab_recs.empty:
+        content_recs = content_based_filtering(user_id, purchases, browsing_history, products)
+        content_recs = pd.DataFrame(content_recs)
 
     required_columns = ['product_id', 'product_name', 'score', 'source', 'category', 'price', 'rating', 'clicks', 'stock']
     for recs, name in [(huspm_recs, 'HUSPM'), (collab_recs, 'Collaborative'), (content_recs, 'Content-Based')]:

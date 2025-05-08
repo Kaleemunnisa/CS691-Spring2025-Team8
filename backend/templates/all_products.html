@@ -4,14 +4,21 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>All Grocery Products - PaceCart</title>
+
+  <!-- Tailwind CSS -->
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Segoe+UI:wght@400;600&display=swap" rel="stylesheet">
+
+  <!-- Google Font: Libre Baskerville -->
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville&display=swap" rel="stylesheet">
+
+  <!-- Icons & Favicon -->
   <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
   <link rel="icon" href="/static/images/favicon.ico">
+
   <style>
     body {
       background: linear-gradient(to right, #ffffff, #f3e8ff);
-      font-family: 'Segoe UI', sans-serif;
+      font-family: 'Libre Baskerville', serif;
     }
     .bubble-button {
       background: linear-gradient(to right, #7e57c2, #8e24aa);
@@ -31,6 +38,7 @@
     }
   </style>
 </head>
+
 <body class="min-h-screen text-gray-800">
 
 <!-- Flash Messages -->
@@ -50,10 +58,11 @@
 {% endwith %}
 
 <!-- Navbar -->
-<nav class="bg-white border-b border-purple-200 shadow p-4 sticky top-0 z-50 flex justify-between items-center px-6">
+<nav class="bg-gradient-to-r from-purple-100 to-green-100 py-3 sticky top-0 z-50 shadow-sm flex justify-between items-center px-6">
   <div class="flex items-center space-x-4">
-    <img src="/static/images/logo.svg" alt="PaceCart Logo" class="h-10 w-10 rounded-full border border-white shadow">
-    <span class="text-3xl font-bold text-black brand-font">PaceCart</span>
+    <img src="https://cdn-icons-png.flaticon.com/512/3082/3082031.png"
+        alt="PaceCart Logo" class="w-12 h-12 object-contain shadow-none" />   
+    <span class="text-3xl font-bold text-black">PaceCart</span>
   </div>
   <div class="space-x-4 text-purple-700 font-semibold">
     <a href="/home" class="hover:text-purple-600"><i class="fas fa-home"></i> Home</a>
@@ -66,7 +75,15 @@
 <!-- Page Title -->
 <section class="text-center py-10">
   <h1 class="text-4xl font-extrabold text-purple-700 mb-2">All Grocery Products</h1>
-  <p class="text-gray-600 text-lg">Browse the complete collection of items available</p>
+  <p class="text-gray-600 text-lg mb-6">Browse the complete collection of items available</p>
+
+  <!-- 🔍 Search Bar -->
+  <form action="/search" method="GET" class="max-w-xl mx-auto flex shadow rounded overflow-hidden border border-purple-300">
+    <input type="text" name="query" placeholder="Search for items..." class="w-full px-4 py-2 text-sm focus:outline-none" />
+    <button type="submit" class="bg-purple-600 text-white px-5 hover:bg-purple-700">
+      <i class="fas fa-search"></i>
+    </button>
+  </form>
 </section>
 
 <!-- Products Grid -->
@@ -75,8 +92,10 @@
   <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
     {% for product in products %}
     <div class="glass-card p-4 {% if viewed_product_ids and product.product_id in viewed_product_ids %}ring-2 ring-purple-400{% endif %}">
-      <img src="{{ product.image_url }}" class="h-40 w-full object-cover rounded-xl mb-2">
-      <h3 class="text-lg font-semibold text-gray-800">{{ product.product_name }}</h3>
+      <a href="/product/{{ product.product_id }}">
+        <img src="{{ product.image_url }}" class="h-40 w-full object-cover rounded-xl mb-2">
+        <h3 class="text-lg font-semibold text-purple-700 hover:underline">{{ product.product_name }}</h3>
+      </a>
       <p class="text-sm text-gray-500">Category: {{ product.category }}</p>
       <p class="text-purple-600 font-bold mt-1">${{ product.price }}</p>
 
@@ -84,10 +103,9 @@
          class="text-sm text-purple-700 hover:underline block mt-2">
          🔍 Recommend Similar {{ product.category }}
       </a>
-
-      <form method="POST" action="/cart" class="mt-2">
+      <form method="POST" action="/cart">
         <input type="hidden" name="product_id" value="{{ product.product_id }}">
-        <button class="bubble-button w-full py-2 rounded-lg text-white font-semibold hover:opacity-90 transition">
+        <button type="submit" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded mt-2 w-full">
           <i class="fas fa-cart-plus mr-2"></i>Add to Cart
         </button>
       </form>

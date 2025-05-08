@@ -13,31 +13,19 @@ logger = logging.getLogger(__name__)
 def load_data():
     logger.debug("Loading data from MySQL...")
     connection = get_db_connection()
-    
+
     if connection is None:
         logger.error("Database connection failed. Cannot load data.")
         return None, None, None
 
     try:
-        products_query = "SELECT * FROM products"
-        products_df = pd.read_sql(products_query, connection)
-
-        purchases_query = "SELECT * FROM purchases"
-        purchases_df = pd.read_sql(purchases_query, connection)
-
-        browsing_history_query = "SELECT * FROM browsing_history"
-        browsing_history_df = pd.read_sql(browsing_history_query, connection)
-
+        products_df = pd.read_sql("SELECT * FROM products", connection)
+        purchases_df = pd.read_sql("SELECT * FROM purchases", connection)
+        browsing_df = pd.read_sql("SELECT * FROM browsing_history", connection)
         logger.debug("Data loaded successfully.")
-        return purchases_df, browsing_history_df, products_df
+        return purchases_df, browsing_df, products_df
     finally:
         connection.close()
-
-# Fix browsing history column typo
-def fix_browsing_history_columns(browsing_history_df):
-    if 'timest' in browsing_history_df.columns:
-        browsing_history_df.rename(columns={'timest': 'timestamp'}, inplace=True)
-    return browsing_history_df
 
 # Ensure DataFrame type
 def ensure_dataframe(df, df_name="DataFrame"):
@@ -48,124 +36,85 @@ def ensure_dataframe(df, df_name="DataFrame"):
         raise TypeError(f"Expected {df_name} to be a pandas DataFrame, but got {type(df)}.")
     return df
 
-# Calculate product popularity
+# Product popularity
 def calculate_product_popularity(purchases_df):
     purchases_df = ensure_dataframe(purchases_df, "purchases_df")
     if purchases_df.empty:
-        logger.warning("purchases_df is empty. Returning default product_popularity.")
         return pd.DataFrame({'product_id': [], 'popularity': []})
-    product_popularity = purchases_df.groupby('product_id').size().reset_index(name='popularity')
-    product_popularity['popularity'] = product_popularity['popularity'] / product_popularity['popularity'].max()
-    logger.debug(f"Product popularity: {len(product_popularity)} items\n{product_popularity.head()}")
-    return product_popularity
+    counts = purchases_df.groupby('product_id').size().reset_index(name='popularity')
+    counts['popularity'] /= counts['popularity'].max()
+    return counts
 
-# Calculate user preference
-def calculate_user_preference(user_id, purchases_df, browsing_history_df, products_df):
-    purchases_df = ensure_dataframe(purchases_df, "purchases_df")
-    browsing_history_df = ensure_dataframe(browsing_history_df, "browsing_history_df")
-    products_df = ensure_dataframe(products_df, "products_df")
-    
+# User preference
+def calculate_user_preference(user_id, purchases_df, browsing_df, products_df):
     user_purchases = purchases_df[purchases_df['user_id'] == user_id]
-    user_browsing = browsing_history_df[browsing_history_df['user_id'] == user_id]
+    user_browsing = browsing_df[browsing_df['user_id'] == user_id]
 
-    logger.debug(f"User {user_id} purchases: {len(user_purchases)} items")
-    logger.debug(f"User {user_id} browsing history: {len(user_browsing)} items")
-
-    # Merge category info from products_df
     user_purchases = user_purchases.merge(products_df[['product_id', 'category']], on='product_id', how='left')
     user_browsing = user_browsing.merge(products_df[['product_id', 'category']], on='product_id', how='left')
 
-    # Calculate preference based on category
-    category_purchase_counts = user_purchases.groupby('category').size().reset_index(name='category_purchase_preference')
-    category_browse_counts = user_browsing.groupby('category').size().reset_index(name='category_browse_preference')
+    purchase_pref = user_purchases.groupby('category').size().reset_index(name='category_purchase_preference')
+    browse_pref = user_browsing.groupby('category').size().reset_index(name='category_browse_preference')
 
-    if not category_purchase_counts.empty:
-        category_purchase_counts['category_purchase_preference'] /= category_purchase_counts['category_purchase_preference'].max()
-    if not category_browse_counts.empty:
-        category_browse_counts['category_browse_preference'] /= category_browse_counts['category_browse_preference'].max()
+    if not purchase_pref.empty:
+        purchase_pref['category_purchase_preference'] /= purchase_pref['category_purchase_preference'].max()
+    if not browse_pref.empty:
+        browse_pref['category_browse_preference'] /= browse_pref['category_browse_preference'].max()
 
-    category_preference = pd.merge(category_purchase_counts, category_browse_counts, on='category', how='outer')
-    category_preference.fillna(0, inplace=True)
+    preference = pd.merge(purchase_pref, browse_pref, on='category', how='outer').fillna(0)
+    return preference
 
-    logger.debug(f"User {user_id} preferences: {len(category_preference)} categories\n{category_preference.head()}")
-    return category_preference
-
-# Calculate dynamic utility
-def calculate_dynamic_utility(frequency, product_popularity, user_preference, seasonality_factor, click_factor):
+# Dynamic utility function
+def calculate_dynamic_utility(frequency, popularity, preference, seasonality, click_factor):
     utility = 1.0
-
     if frequency > 5:
-        utility *= 2.5  # High weight for frequent purchases
-
-    utility *= (product_popularity * 4.0)  # High weight for popularity
-    utility *= (user_preference * 3.0)  # High weight for user preference
-    utility *= seasonality_factor  # Dynamic seasonality
-    utility *= (1 + click_factor)  # Boost for recent clicks
-
+        utility *= 2.5
+    utility *= popularity * 4.0
+    utility *= preference * 3.0
+    utility *= seasonality
+    utility *= (1 + click_factor)
     return utility
 
 # Get top recommendations
-def get_top_recommendations(user_id, purchases_df, browsing_history_df, products_df, product_popularity, top_n=5):
-    if not isinstance(product_popularity, pd.DataFrame):
-        raise TypeError(f"product_popularity must be a DataFrame, got {type(product_popularity)}")
-    
-    purchases_df = ensure_dataframe(purchases_df, "purchases_df")
-    browsing_history_df = ensure_dataframe(browsing_history_df, "browsing_history_df")
-    products_df = ensure_dataframe(products_df, "products_df")
-
-    logger.debug(f"Input data sizes: purchases={len(purchases_df)}, browsing_history={len(browsing_history_df)}, products={len(products_df)}")
-
+def get_top_recommendations(user_id, purchases_df, browsing_df, products_df, popularity_df, top_n=5):
     user_purchases = purchases_df[purchases_df['user_id'] == user_id]
-    user_browsing = browsing_history_df[browsing_history_df['user_id'] == user_id]
+    user_browsing = browsing_df[browsing_df['user_id'] == user_id]
 
-    purchased_products = user_purchases['product_id'].unique()
-    browsed_products = user_browsing['product_id'].unique()
+    interacted_products = set(user_purchases['product_id']).union(set(user_browsing['product_id']))
+    category_pref = calculate_user_preference(user_id, purchases_df, browsing_df, products_df)
 
-    interacted_products = set(purchased_products).union(set(browsed_products))
-    logger.debug(f"User {user_id} interacted products: {len(interacted_products)}")
+    current_month = datetime.now().month
+    seasonality_factor = 1.2 if current_month in [11, 12] else 1.0
+    click_counts = products_df.groupby('product_id')['clicks'].sum().reset_index()
+    max_clicks = click_counts['clicks'].max() or 1
 
     recommendations = []
 
-    category_preference = calculate_user_preference(user_id, purchases_df, browsing_history_df, products_df)
+    for _, row in products_df.iterrows():
+        product_id = row['product_id']
+        product_name = row['product_name']
 
-    # Simulate seasonality (e.g., higher utility in certain months)
-    current_month = datetime.now().month
-    seasonality_factor = 1.2 if current_month in [11, 12] else 1.0  # Boost for holiday season
+        user_product_purchases = user_purchases[user_purchases['product_id'] == product_id]
+        frequency = len(user_product_purchases)
 
-    # Calculate click factor based on recent activity
-    click_counts = products_df.groupby('product_id')['clicks'].sum().reset_index()
-    max_clicks = click_counts['clicks'].max() if click_counts['clicks'].max() > 0 else 1
+        skip = False
+        if not user_product_purchases.empty:
+            last_purchase = user_product_purchases['purchase_date'].max()
+            days_since = (datetime.now().date() - last_purchase).days
+            if days_since < 7 and frequency < 3:
+                skip = True
 
-    for product_id in products_df['product_id']:
-        if product_id in interacted_products:
+        if skip:
             continue
 
-        product_data = products_df[products_df['product_id'] == product_id]
-        if product_data.empty:
-            continue
-        
-        product_row = product_data.iloc[0]
-        category = product_row['category'] if 'category' in product_row else "Unknown"
+        category = row['category']
+        preference = category_pref[category_pref['category'] == category]['category_purchase_preference'].values[0] if category in category_pref['category'].values else 1.0
+        pop_score = popularity_df[popularity_df['product_id'] == product_id]['popularity'].values[0] if product_id in popularity_df['product_id'].values else 0.5
+        click_factor = click_counts[click_counts['product_id'] == product_id]['clicks'].values[0] / max_clicks if product_id in click_counts['product_id'].values else 0.0
 
-        # Get category preference
-        category_pref_value = category_preference[category_preference['category'] == category]['category_purchase_preference'].values[0] \
-            if category in category_preference['category'].values else 1.0
+        utility = calculate_dynamic_utility(frequency, pop_score, preference, seasonality_factor, click_factor)
+        recommendations.append((product_id, utility))
 
-        frequency = len(user_purchases[user_purchases['product_id'] == product_id])
-
-        # Get product popularity score
-        matching_row = product_popularity[product_popularity['product_id'] == product_id]
-        product_popularity_score = matching_row.iloc[0]['popularity'] if not matching_row.empty else 0.5
-
-        # Get click factor
-        click_row = click_counts[click_counts['product_id'] == product_id]
-        click_factor = click_row.iloc[0]['clicks'] / max_clicks if not click_row.empty else 0.0
-
-        utility_score = calculate_dynamic_utility(frequency, product_popularity_score, category_pref_value, seasonality_factor, click_factor)
-
-        recommendations.append((product_id, utility_score))
-
-    # Deep learning score refinement
     if recommendations:
         product_ids = [pid for pid, _ in recommendations]
         dl_scores = predict_utility_scores(user_id, product_ids, products_df)
@@ -173,77 +122,25 @@ def get_top_recommendations(user_id, purchases_df, browsing_history_df, products
 
     recommendations.sort(key=lambda x: x[1], reverse=True)
 
-    # Normalize scores to 0-1
-    if recommendations:
-        max_score = max(score for _, score in recommendations)
-        if max_score > 0:
-            recommendations = [(pid, score / max_score) for pid, score in recommendations]
+    max_score = max(score for _, score in recommendations) if recommendations else 1
+    recommendations = [(pid, score / max_score) for pid, score in recommendations if max_score > 0]
 
-    recommended_products = []
+    results = []
     for product_id, score in recommendations[:top_n]:
-        product_info_row = products_df[products_df['product_id'] == product_id]
-
-        if not product_info_row.empty:
-            product_info = product_info_row.iloc[0]
-            product_name = product_info['product_name'] if 'product_name' in product_info else f"Product {product_id}"
-            category = product_info['category'] if 'category' in product_info else "Unknown"
-            image_url = product_info['image_url'] if 'image_url' in product_info else None
-            price = float(product_info['price']) if 'price' in product_info else 0.0
-            rating = float(product_info['rating']) if 'rating' in product_info else 0.0
-            clicks = float(product_info['clicks']) if 'clicks' in product_info else 0.0
-            stock = float(product_info['stock']) if 'stock' in product_info else 0.0
-        else:
-            product_name = f"Product {product_id}"
-            category = "Unknown"
-            image_url = None
-            price = 0.0
-            rating = 0.0
-            clicks = 0.0
-            stock = 0.0
-
-        recommended_products.append({
+        info = products_df[products_df['product_id'] == product_id].iloc[0]
+        results.append({
             'product_id': product_id,
-            'product_name': product_name,
-            'category': category,
-            'price': price,
-            'rating': rating,
-            'clicks': clicks,
-            'stock': stock,
+            'product_name': info.get('product_name', f"Product {product_id}"),
+            'category': info.get('category', 'Unknown'),
+            'price': float(info.get('price', 0)),
+            'rating': float(info.get('rating', 0)),
+            'clicks': float(info.get('clicks', 0)),
+            'stock': float(info.get('stock', 0)),
             'score': score,
-            'image_url': image_url,
+            'image_url': info.get('image_url', None),
             'source': 'HUSPM'
         })
 
-    # Fallback to popular products if no recommendations
-    if not recommended_products:
-        logger.warning(f"No HUSPM recommendations for user {user_id}. Using popular products.")
-        popular_products = product_popularity['product_id'].head(top_n).tolist()
-        for product_id in popular_products:
-            if product_id in interacted_products:
-                continue
-            product_info_row = products_df[products_df['product_id'] == product_id]
-            if not product_info_row.empty:
-                product_info = product_info_row.iloc[0]
-                product_name = product_info['product_name'] if 'product_name' in product_info else f"Product {product_id}"
-                category = product_info['category'] if 'category' in product_info else "Unknown"
-                image_url = product_info['image_url'] if 'image_url' in product_info else None
-                price = float(product_info['price']) if 'price' in product_info else 0.0
-                rating = float(product_info['rating']) if 'rating' in product_info else 0.0
-                clicks = float(product_info['clicks']) if 'clicks' in product_info else 0.0
-                stock = float(product_info['stock']) if 'stock' in product_info else 0.0
-                recommended_products.append({
-                    'product_id': product_id,
-                    'product_name': product_name,
-                    'category': category,
-                    'price': price,
-                    'rating': rating,
-                    'clicks': clicks,
-                    'stock': stock,
-                    'score': 0.5,
-                    'image_url': image_url,
-                    'source': 'HUSPM (Popular Fallback)'
-                })
-        recommended_products = recommended_products[:top_n]
+    return results
 
-    logger.debug(f"HUSPM recommendations: {len(recommended_products)} items, scores: {[r['score'] for r in recommended_products]}")
-    return recommended_products
+

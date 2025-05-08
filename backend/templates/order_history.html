@@ -4,17 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Your Orders - PaceCart</title>
+
+  <!-- Tailwind CSS -->
   <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Segoe+UI:wght@400;600&display=swap" rel="stylesheet">
+
+  <!-- Libre Baskerville Font -->
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville&display=swap" rel="stylesheet">
+
+  <!-- AlpineJS & FontAwesome -->
   <script src="https://cdn.jsdelivr.net/npm/alpinejs" defer></script>
   <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+
   <style>
     body {
       background: linear-gradient(to right, #ffffff, #f3e8ff);
-      font-family: 'Segoe UI', sans-serif;
+      font-family: 'Libre Baskerville', serif;
     }
     .brand-font {
-      font-family: 'Great Vibes', cursive;
+      font-family: 'Libre Baskerville', serif;
     }
     .transition-slide {
       transition: max-height 0.5s ease-out;
@@ -22,12 +29,14 @@
     }
   </style>
 </head>
+
 <body class="text-gray-800">
 
 <!-- Header -->
-<nav class="bg-white border-b border-purple-200 shadow p-4 sticky top-0 z-50 flex justify-between items-center px-6">
+<nav class="bg-gradient-to-r from-purple-100 to-green-100 py-3 sticky top-0 z-50 shadow-sm flex justify-between items-center px-6">
   <div class="flex items-center space-x-4">
-    <img src="https://static.vecteezy.com/system/resources/thumbnails/000/251/695/small_2x/grocery-shopping-bag-vector-illustration.jpg" alt="PaceCart Logo" class="h-10 w-10 rounded-full border border-white shadow">
+    <img src="https://cdn-icons-png.flaticon.com/512/3082/3082031.png"
+        alt="PaceCart Logo" class="w-12 h-12 object-contain shadow-none" />   
     <span class="text-3xl font-bold text-black brand-font">PaceCart</span>
   </div>
   <div class="space-x-4 text-purple-800 font-semibold">
@@ -58,39 +67,54 @@
 <div class="max-w-6xl mx-auto px-6 py-12" x-data="{ active: null }">
   <h2 class="text-3xl font-bold text-purple-700 mb-8 text-center">📦 Your Order History</h2>
 
-  {% if orders_by_date %}
-    {% for date, items in orders_by_date.items() %}
-    <div class="mb-6 border rounded-xl">
-      <button @click="active === '{{ date }}' ? active = null : active = '{{ date }}'" class="w-full text-left bg-purple-100 px-4 py-3 rounded-t font-semibold text-purple-800 shadow">
-        🗓️ {{ date }} — {{ items|length }} item(s)
-      </button>
-      <div x-show="active === '{{ date }}'" x-transition class="transition-slide grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-3 px-4 pb-4">
-        {% for item in items %}
-        <div class="bg-white p-4 rounded-xl shadow border">
-          <img src="{{ item.image_url }}" class="h-32 w-full object-cover rounded mb-2">
-          <h3 class="text-lg font-semibold text-purple-700">{{ item.product_name }}</h3>
-          <p class="text-sm text-gray-500">Qty: {{ item.quantity }}</p>
-          <p class="text-sm text-gray-700">Paid: ${{ '%.2f' % item.total_price }}</p>
-          <form action="/rate_product" method="POST" class="mt-3 flex items-center gap-2">
-            <input type="hidden" name="user_id" value="{{ session['user_id'] }}">
-            <input type="hidden" name="product_id" value="{{ item.product_id }}">
-            <select name="rating" class="p-1 border rounded text-sm">
-              <option value="5">★★★★★</option>
-              <option value="4">★★★★</option>
-              <option value="3">★★★</option>
-              <option value="2">★★</option>
-              <option value="1">★</option>
-            </select>
-            <button type="submit" class="bg-purple-600 text-white px-3 py-1 rounded text-sm hover:bg-purple-700">Rate</button>
-          </form>
+  {% for date, orders in orders_by_date.items() %}
+  <div class="mb-10">
+    <h2 class="text-xl font-bold text-purple-600 mb-4 border-b pb-2">🗓️ {{ date }}</h2>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      {% for order in orders %}
+      <div class="bg-white rounded-xl p-4 shadow border">
+        <div class="flex items-center gap-4">
+          <img src="{{ order.image_url }}" alt="{{ order.product_name }}" class="w-24 h-24 object-cover rounded-xl border">
+          <div>
+            <h3 class="text-lg font-semibold text-purple-700">{{ order.product_name }}</h3>
+            <p class="text-sm text-gray-600">Qty: {{ order.quantity }}</p>
+            <p class="text-sm text-gray-600">Paid: ${{ '%.2f' % order.total_price }}</p>
+          </div>
         </div>
-        {% endfor %}
+
+        {% if order.review and order.rating %}
+          <!-- Show submitted review -->
+          <div class="mt-4 px-4 py-2 bg-purple-50 rounded-lg">
+            <p class="text-gray-800 italic">"{{ order.review }}"</p>
+            <p class="text-yellow-500 text-sm">⭐ {{ order.rating }}/5</p>
+          </div>
+        {% else %}
+          <!-- Show form to submit review -->
+          <form action="/rate_product" method="POST" class="mt-4 space-y-2">
+            <input type="hidden" name="user_id" value="{{ session['user_id'] }}">
+            <input type="hidden" name="product_id" value="{{ order.product_id }}">
+            <textarea name="review" rows="2" required placeholder="Write a short review..." class="w-full border rounded p-2 text-sm"></textarea>
+            <div class="flex items-center gap-2">
+              <label for="rating" class="text-sm">Rate:</label>
+              <select name="rating" class="p-2 border rounded">
+                <option value="5">★★★★★</option>
+                <option value="4">★★★★</option>
+                <option value="3">★★★</option>
+                <option value="2">★★</option>
+                <option value="1">★</option>
+              </select>
+              <button type="submit" class="ml-auto bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 text-sm rounded">Submit</button>
+            </div>
+          </form>
+        {% endif %}
       </div>
+      {% endfor %}
     </div>
-    {% endfor %}
-  {% else %}
-    <p class="text-center text-gray-500 text-lg">You haven't made any purchases yet.</p>
-  {% endif %}
+  </div>
+{% endfor %}
+
+
 </div>
 
 </body>
