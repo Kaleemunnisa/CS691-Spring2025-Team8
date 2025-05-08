@@ -1,6 +1,6 @@
 # 🛒 PaceCart: Advancing Grocery E-Commerce with Sequential Pattern Mining and Deep Learning
 
-> **CS 691 – Spring 2025 Capstone Project**
+> **CS 691 – Spring 2025 - Team 8 - Capstone Project**
 
 ---
 
