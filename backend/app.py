@@ -9,7 +9,7 @@ from flask_login import login_required
 import pandas as pd
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key_here'
+app.secret_key = "a75bf4b28004caa48b9dbd40fe2642d1"
 def get_products(order_by=None, category=None, query=None):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
